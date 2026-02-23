@@ -61,7 +61,7 @@
       Volume2, VolumeX, Loader2, Clock, MapPin, Phone, Globe,
       Users, User, ClipboardList, HeartHandshake, MoveUp,
       Sunrise, GraduationCap, CreditCard, Megaphone, Smile, Mic2, FileText, Lock, CheckCircle2, RefreshCw, Wand2, ExternalLink, Link as LinkIcon,
-      Search, Archive, ArrowLeft
+      Search, Archive, ArrowLeft, Image, ImagePlus
     } from 'lucide-react';
     import { initializeApp } from 'firebase/app';
     import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
@@ -448,6 +448,7 @@
         donors: "",
         accounts: "농협은행 121058-51-000997 (해운대순복음교회)",
         recitingVerse: "",
+        photos: [],
         serviceGuide: DEFAULT_SERVICE_GUIDE,
         meetingGuide: DEFAULT_MEETING_GUIDE,
         staff: DEFAULT_STAFF_LIST,
@@ -458,6 +459,7 @@
       });
 
       const [modal, setModal] = useState({ open: false, type: '', title: '', content: '', link: '' });
+      const [lightbox, setLightbox] = useState({ open: false, src: '', caption: '' });
 
       // Auth
       useEffect(() => {
@@ -804,6 +806,26 @@
 
       return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20">
+          {/* Image Lightbox */}
+          {lightbox.open && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-md" onClick={() => setLightbox({ open: false, src: '', caption: '' })}>
+              <button className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10" onClick={() => setLightbox({ open: false, src: '', caption: '' })}>
+                <X className="w-8 h-8 text-white" />
+              </button>
+              <div className="max-w-[95vw] max-h-[90vh] flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                <img
+                  src={lightbox.src}
+                  alt={lightbox.caption}
+                  className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+                {lightbox.caption && (
+                  <p className="text-white/80 text-lg font-medium text-center max-w-xl">{lightbox.caption}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           <nav className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b dark:border-slate-800 px-4 py-4 flex justify-between items-center shadow-sm">
             <div className="flex items-center gap-3">
               <ChurchLogo />
@@ -1005,6 +1027,42 @@
                 <div className="bg-blue-600 text-white text-center py-4 px-4 rounded-2xl shadow-md font-bold text-lg break-keep">
                   {bulletinData.churchMotto}
                 </div>
+
+                {/* 금주의 사진 Section */}
+                {bulletinData.photos && bulletinData.photos.length > 0 && (
+                  <section className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border dark:border-slate-800 overflow-hidden">
+                    <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600">
+                        <Image className="w-5 h-5" />
+                      </div>
+                      <h3 className="font-black text-xl">금주의 사진</h3>
+                    </div>
+                    <div className={`p-4 ${bulletinData.photos.length === 1 ? '' : 'grid grid-cols-2 gap-3'}`}>
+                      {bulletinData.photos.map((photo, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setLightbox({ open: true, src: photo.url, caption: photo.caption || '' })}
+                          className={`relative group overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800 ${bulletinData.photos.length === 1 ? 'w-full aspect-[16/10]' : bulletinData.photos.length === 3 && idx === 0 ? 'col-span-2 aspect-[16/9]' : 'aspect-square'} transition-transform hover:scale-[1.02] active:scale-95`}
+                        >
+                          <img
+                            src={photo.url}
+                            alt={photo.caption || `사진 ${idx + 1}`}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
+                            {photo.caption && (
+                              <span className="text-white text-sm font-bold drop-shadow-lg">{photo.caption}</span>
+                            )}
+                          </div>
+                          <div className="absolute top-3 right-3 p-2 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="w-4 h-4 text-white" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
 
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border dark:border-slate-800 space-y-5">
                   <div className="flex items-center gap-4">
@@ -1266,6 +1324,38 @@
                   </div>
                 ) : (
                   <div className="space-y-8 pb-32 animate-in slide-in-from-top-4 duration-500">
+                    {/* 금주의 사진 관리 */}
+                    <section className="bg-rose-50 dark:bg-rose-950/20 p-6 rounded-3xl border border-rose-100 dark:border-rose-900/50 space-y-4 shadow-sm">
+                      <div className="flex justify-between items-center px-2">
+                        <h3 className="font-black text-rose-600 flex items-center gap-2 text-xl"><ImagePlus className="w-6 h-6" /> 금주의 사진 관리</h3>
+                        <button onClick={() => setBulletinData(p => ({ ...p, photos: [...(p.photos || []), { url: "", caption: "" }] }))} className="p-2 bg-rose-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6" /></button>
+                      </div>
+                      <p className="text-sm text-slate-500 font-bold px-2">이미지 주소(URL)를 입력하면 주보 상단에 사진이 표시됩니다.</p>
+                      {(bulletinData.photos || []).map((photo, idx) => (
+                        <div key={idx} className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700 space-y-2 relative">
+                          <button onClick={() => setBulletinData(prev => { const p = [...(prev.photos || [])]; p.splice(idx, 1); return { ...prev, photos: p }; })} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
+                          <input
+                            className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-rose-400"
+                            placeholder="이미지 주소 (https://...)"
+                            value={photo.url}
+                            onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const p = [...(prev.photos || [])]; p[idx] = { ...p[idx], url: val }; return { ...prev, photos: p }; }); }}
+                          />
+                          <input
+                            className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm"
+                            placeholder="사진 설명 (선택사항)"
+                            value={photo.caption || ''}
+                            onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const p = [...(prev.photos || [])]; p[idx] = { ...p[idx], caption: val }; return { ...prev, photos: p }; }); }}
+                          />
+                          {photo.url && (
+                            <div className="mt-2 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 max-h-48">
+                              <img src={photo.url} alt="미리보기" className="w-full h-48 object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }} />
+                              <div className="hidden items-center justify-center h-48 text-slate-400 text-sm font-bold">이미지를 불러올 수 없습니다</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </section>
+
                     <section className="bg-orange-50 dark:bg-orange-950/20 p-6 rounded-3xl border border-orange-100 dark:border-orange-900/50 space-y-4 shadow-sm">
                       <h3 className="font-black text-orange-600 flex items-center gap-2 text-xl"><Settings className="w-6 h-6" /> 설교 설정</h3>
                       <input placeholder="설교 제목" className="w-full p-4 rounded-2xl border-none shadow-sm dark:bg-slate-800 text-lg" value={bulletinData.sermon.title} onChange={e => setBulletinData({ ...bulletinData, sermon: { ...bulletinData.sermon, title: e.target.value } })} />
