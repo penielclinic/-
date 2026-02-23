@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>해운대순복음교회 스마트 주보</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'media',
+      theme: {
+        extend: {},
+      },
+    }
+  </script>
+
+  <style>
+    /* 스크롤바 숨김 유틸리티 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;  /* IE and Edge */
+      scrollbar-width: none;  /* Firefox */
+    }
+  </style>
+
+  <!-- Import Maps for ES Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0",
+        "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
+      }
+    }
+  </script>
+
+  <!-- Babel Standalone (JSX 컴파일용) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { 
+      BookOpen, Settings, Eye, Plus, Save, ChevronDown, ChevronUp, ChevronRight,
+      Calendar, Info, Bell, X, Trash2, 
+      Volume2, VolumeX, Loader2, Clock, MapPin, Phone, Globe, 
+      Users, User, ClipboardList, HeartHandshake, MoveUp, 
+      Sunrise, GraduationCap, CreditCard, Megaphone, Smile, Mic2, FileText, Lock, CheckCircle2, RefreshCw, Wand2, ExternalLink, Link as LinkIcon
+    } from 'lucide-react';
+    import { initializeApp } from 'firebase/app';
+    import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+
+    // --- Firebase Configuration ---
+    // 로컬 환경에서도 열릴 수 있도록 Fallback을 추가했습니다.
+    const getFirebaseConfig = () => {
+      try {
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          return JSON.parse(__firebase_config);
+        }
+      } catch (e) {
+        console.warn("Firebase config parsing error", e);
+      }
+      return {
+        apiKey: "dummy-key",
+        authDomain: "dummy.firebaseapp.com",
+        projectId: "dummy",
+        storageBucket: "dummy.appspot.com",
+        messagingSenderId: "12345",
+        appId: "1:12345:web:abcdef"
+      };
+    };
+
+    const firebaseConfig = getFirebaseConfig();
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'haeundae-church-app';
+    const apiKey = ""; 
+
+    // --- Constants & Service Orders ---
+    const SERVICES = {
+      SUNDAY_MORNING: { id: 'SUNDAY_MORNING', label: '주일대예배', days: [0] },
+      SUNDAY_AFTERNOON: { id: 'SUNDAY_AFTERNOON', label: '주일오후예배', days: [0] },
+      WEDNESDAY: { id: 'WEDNESDAY', label: '삼일밤예배', days: [3] },
+      FRIDAY: { id: 'FRIDAY', label: '금요성령기도회', days: [5] }
+    };
+
+    const DEFAULT_ORDERS = {
+      SUNDAY_MORNING: [
+        { id: 1, type: "▲ 묵도", detail: "시 41:10", performer: "사회자" },
+        { id: 2, type: "▲ 입례송", detail: "", performer: "성가대" },
+        { id: 3, type: "▲ 신앙고백", detail: "사도신경", performer: "다함께" },
+        { id: 4, type: "▲ 찬송", detail: "270장", performer: "다함께" },
+        { id: 5, type: "기도", detail: "1부: 조인숙 교사 / 2부: 전영수 장로", performer: "담당자" },
+        { id: 6, type: "헌금", detail: "391장", performer: "다함께" },
+        { id: 7, type: "성경봉독", detail: "슥 4:1-9", performer: "사회자" },
+        { id: 8, type: "찬양", detail: "작은 불꽃 하나가", performer: "성가대" },
+        { id: 9, type: "광고", detail: "", performer: "맡은이" },
+        { id: 10, type: "설교", detail: "큰 산아 네가 무엇이냐?", performer: "담임목사" },
+        { id: 11, type: "▲ 찬송", detail: "(복) 창조의 하나님은 나의 아버지", performer: "다함께" },
+        { id: 12, type: "▲ 축도", detail: "", performer: "담임목사" }
+      ],
+      SUNDAY_AFTERNOON: [
+        { id: 1, type: "기도", detail: "", performer: "정행순 순장" },
+        { id: 2, type: "찬송", detail: "179장", performer: "다함께" },
+        { id: 3, type: "설교", detail: "오실 그이가 당신이오니까? (마 11:2-6)", performer: "천대은 목사" },
+        { id: 4, type: "광고 및 폐회", detail: "", performer: "사회자" }
+      ],
+      WEDNESDAY: [
+        { id: 1, type: "기도", detail: "", performer: "백고운 청년" },
+        { id: 2, type: "경과보고", detail: "일본단기선교 결과보고", performer: "선교팀" },
+        { id: 3, type: "설교", detail: "교회를 향한 예수님의 열정 (요 2:13-17)", performer: "김병찬 전도사" },
+        { id: 4, type: "통성기도", detail: "나라와 민족을 위하여", performer: "다함께" }
+      ],
+      FRIDAY: [
+        { id: 1, type: "찬양", detail: "성령충만 찬양", performer: "찬양팀" },
+        { id: 2, type: "설교", detail: "성령의 사역 (고전 12:4-13)", performer: "담임목사" },
+        { id: 3, type: "성령기도회", detail: "환우와 가정을 위한 기도", performer: "다함께" },
+        { id: 4, type: "축도", detail: "", performer: "담임목사" }
+      ]
+    };
+
+    const DEFAULT_SERVICE_GUIDE = [
+      { name: "주일예배 1부", time: "오전 9:00", place: "본당" },
+      { name: "주일예배 2부", time: "오전 11:00", place: "본당" },
+      { name: "새벽기도회", time: "월-토 오전 5:00", place: "온혜홀" },
+      { name: "주일오후예배", time: "오후 2:30", place: "본당" },
+      { name: "삼일밤예배", time: "오후 7:00", place: "본당" },
+      { name: "금요성령기도회", time: "(금) 오후 8:00", place: "본당" },
+      { name: "청년교회", time: "주일 오후 2:30", place: "온혜홀" },
+      { name: "유치부", time: "주일 오전 11:00", place: "센싱키즈2층" },
+      { name: "유·초등부", time: "주일 오전 11:00", place: "센싱키즈3층" },
+      { name: "중·고등부", time: "주일 오전 11:00", place: "베다니홀" },
+    ];
+
+    const DEFAULT_MEETING_GUIDE = [
+      { name: "성가대연습", time: "주일 9:00, 13:30", place: "5층 성가대실" },
+      { name: "일꾼성경공부", time: "(화) 10:30", place: "베다니홀" },
+      { name: "순복음빌립특공대", time: "(화) 오후 1:00", place: "베다니홀" },
+      { name: "순복음빌립특공대", time: "(토) 오전 10:30", place: "교회 8층" },
+      { name: "시안선교회", time: "매월 4째주 1:00", place: "온혜홀" },
+      { name: "중보기도자모임", time: "(목) 오후 7:30", place: "베다니홀" },
+      { name: "푸른솔어르신대학", time: "(목) 오전 10:00", place: "베다니홀" },
+      { name: "새가족성경공부", time: "(일) 2부 예배 후", place: "10층 헤세드홀" },
+      { name: "공동체성경읽기", time: "개별 링크 제공", place: "" },
+    ];
+
+    const DEFAULT_STAFF_LIST = [
+      { role: "담임목사", names: "유진성", link: "" },
+      { role: "전임목사", names: "김병국", link: "" },
+      { role: "전임목사", names: "천대은", link: "" },
+      { role: "전임목사", names: "김소현", link: "" },
+      { role: "전임전도사", names: "김병찬", link: "" },
+      { role: "교육전도사", names: "이은정", link: "" },
+      { role: "교육전도사", names: "권배경", link: "" },
+      { role: "교육전도사", names: "김태곤", link: "" },
+      { role: "장로", names: "전영수 권영수 안영태 성인수 이해동 유상원 표세영 박경원 조도제", link: "" },
+      { role: "은퇴장로", names: "손이문 김홍철 이영철 강규환", link: "" },
+      { role: "명예장로", names: "김춘식 나문기 조도수 김만섭 황종섭 이종구 하의식", link: "" },
+      { role: "선교장로", names: "정찬제", link: "" },
+      { role: "선교사", names: "정찬중(베트남)", link: "" },
+      { role: "선교사", names: "김범철(뉴질랜드)", link: "" },
+      { role: "선교사", names: "김유성(미얀마)", link: "" },
+      { role: "성가대장", names: "표세영 (지휘) 양두석 (반주) 김영은 (총무) 김석진", link: "" },
+      { role: "찬양팀장", names: "홍명훈 (방송실) 남충헌", link: "" },
+      { role: "협력교회", names: "하와이 백향목교회", link: "" },
+      { role: "협력교회", names: "캐나다 순복음영성교회", link: "" },
+      { role: "협력교회", names: "빌라델비아 둥지교회", link: "" },
+      { role: "협력교회", names: "목포 연세선교교회", link: "" },
+      { role: "협력교회", names: "알라스카 은혜와평강순복음교회", link: "" },
+      { role: "협력교회", names: "차후 세워질 지체 교회들", link: "" }
+    ];
+
+    const DEFAULT_CHURCH_SCHOOL = [
+      { name: "유치부", preacher: "김소현 목사", bible: "출3:10", title: "우리의 기도를 들으시는 하나님" },
+      { name: "유초등부", preacher: "김소현 목사", bible: "출3:10-12", title: "내 백성을~ 애굽에서~" },
+      { name: "중고등부", preacher: "천대은 목사", bible: "출3:1~12", title: "신발부터 다시 신자" },
+      { name: "청년교회", preacher: "김태곤 전도사", bible: "마9:18~31", title: "의심의 자리에서 확신의 자리" }
+    ];
+
+    const PERSON_DB = {
+      "유진성": "해운대순복음교회 담임목사. Rev. Jason J. You. 성령 충만한 사역.",
+      "전영수": "해운대순복음교회 장로. 2부 예배 기도 담당.",
+      "조인숙": "해운대순복음교회 교사. 1부 예배 기도 담당.",
+      "천대은": "청년교회 담당 목사. 주일오후예배 설교.",
+      "김병찬": "해운대순복음교회 전도사. 삼일밤예배 설교."
+    };
+
+    // --- Helper Functions ---
+    const pcmToWav = (pcmData, sampleRate) => {
+      const buffer = new ArrayBuffer(44 + pcmData.length);
+      const view = new DataView(buffer);
+      const writeString = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+      writeString(0, 'RIFF'); view.setUint32(4, 32 + pcmData.length, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+      view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, pcmData.length, true);
+      new Uint8Array(buffer, 44).set(new Uint8Array(pcmData)); return buffer;
+    };
+
+    const getPrevWeekDate = (dateStr) => {
+      const d = new Date(dateStr);
+      d.setDate(d.getDate() - 7);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const getLatestSunday = () => {
+      const d = new Date();
+      const day = d.getDay(); 
+      const diff = d.getDate() - day; 
+      d.setDate(diff);
+      
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const date = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${date}`;
+    };
+
+    // --- Sub-components ---
+    const ChurchLogo = () => (
+      <svg viewBox="0 0 100 50" className="h-12 w-auto" aria-label="해운대순복음교회 로고">
+        <path d="M15 10 L15 45" stroke="#52A1D3" strokeWidth="5" strokeLinecap="round"/>
+        <path d="M30 15 L30 45" stroke="#52A1D3" strokeWidth="5" strokeLinecap="round"/>
+        <path d="M10 28 Q 22 24, 40 32" stroke="#52A1D3" strokeWidth="4" strokeLinecap="round"/>
+        <path d="M55 15 L55 45 C 75 45, 75 15, 55 15" stroke="#52A1D3" strokeWidth="5" strokeLinecap="round" fill="none"/>
+        <path d="M70 12 L75 12 L75 18 L70 18 Z" fill="#EF8F34" stroke="#EF8F34" strokeWidth="2" strokeLinejoin="round"/>
+      </svg>
+    );
+
+    const Modal = ({ modal, onClose }) => {
+      const [isSpeaking, setIsSpeaking] = useState(false);
+      const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+      const audioRef = useRef(null);
+
+      if (!modal.open) return null;
+
+      const handleSpeech = async () => {
+        if (isSpeaking) { audioRef.current?.pause(); setIsSpeaking(false); return; }
+        setIsLoadingAudio(true);
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `${modal.title}. ${modal.content}` }] }],
+              generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } } },
+              model: "gemini-2.5-flash-preview-tts"
+            })
+          });
+          const result = await response.json();
+          const audioData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+          if (!audioData) throw new Error('Audio failed');
+          const sampleRate = parseInt(audioData.mimeType.match(/rate=(\d+)/)?.[1] || "24000");
+          const binary = window.atob(audioData.data);
+          const pcm = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) pcm[i] = binary.charCodeAt(i);
+          const url = URL.createObjectURL(new Blob([pcmToWav(pcm, sampleRate)], { type: 'audio/wav' }));
+          if (audioRef.current) { audioRef.current.src = url; audioRef.current.play(); setIsSpeaking(true); }
+        } catch (err) { console.error(err); } finally { setIsLoadingAudio(false); }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-6 border-b dark:border-slate-800">
+              <h3 className="text-2xl font-bold flex items-center gap-3">
+                <BookOpen className="w-6 h-6 text-blue-500" />
+                {modal.title}
+              </h3>
+              <div className="flex items-center gap-3">
+                {(modal.type === 'BIBLE') && (
+                  <button onClick={handleSpeech} className="p-3 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+                    {isLoadingAudio ? <Loader2 className="w-6 h-6 animate-spin" /> : isSpeaking ? <VolumeX className="w-6 h-6 text-blue-600" /> : <Volume2 className="w-6 h-6" />}
+                  </button>
+                )}
+                <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><X className="w-7 h-7" /></button>
+              </div>
+            </div>
+            <div className="p-8 max-h-[70vh] overflow-y-auto">
+              <div className={`text-xl leading-loose whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-200`}>
+                {modal.content}
+              </div>
+            </div>
+            {(modal.link) && (
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-t dark:border-slate-800 flex justify-center">
+                <a 
+                  href={modal.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg transition-transform active:scale-95"
+                >
+                  <ExternalLink className="w-6 h-6" />
+                  관련 페이지 바로가기
+                </a>
+              </div>
+            )}
+            {!modal.link && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 flex justify-end">
+                <button onClick={onClose} className="px-8 py-4 bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-2xl font-bold text-lg shadow-lg transition-transform active:scale-95">확인</button>
+              </div>
+            )}
+          </div>
+          <audio ref={audioRef} onEnded={() => setIsSpeaking(false)} className="hidden" />
+        </div>
+      );
+    };
+
+    const AdminLoginModal = ({ isOpen, onClose, onLogin }) => {
+      const [password, setPassword] = useState("");
+      const [error, setError] = useState(false);
+      const inputRef = useRef(null);
+
+      useEffect(() => {
+        if (isOpen && inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, [isOpen]);
+
+      if (!isOpen) return null;
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (password === "1900") {
+          onLogin();
+          onClose();
+          setPassword("");
+          setError(false);
+        } else {
+          setError(true);
+          setPassword("");
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xs rounded-3xl shadow-2xl p-6 animate-in zoom-in duration-200">
+            <h3 className="text-xl font-bold mb-6 text-center flex items-center justify-center gap-2">
+              <Lock className="w-6 h-6 text-blue-600"/>
+              관리자 접속
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <input 
+                ref={inputRef}
+                type="password" 
+                placeholder="비밀번호" 
+                inputMode="numeric"
+                className={`w-full p-4 rounded-xl border ${error ? 'border-red-500 bg-red-50' : 'border-slate-200 dark:border-slate-700 dark:bg-slate-800'} outline-none transition-all text-center font-bold text-xl tracking-widest`}
+                value={password}
+                onChange={(e) => {setPassword(e.target.value); setError(false);}}
+              />
+              {error && <p className="text-sm text-red-500 text-center font-bold animate-pulse">비밀번호가 올바르지 않습니다.</p>}
+              <div className="flex gap-3">
+                <button type="button" onClick={onClose} className="flex-1 py-4 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold text-slate-500 text-lg hover:bg-slate-200 transition-colors">취소</button>
+                <button type="submit" className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold text-lg shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-colors">확인</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    };
+
+    const AccordionItem = ({ title, icon: Icon, children, defaultOpen = false, accentColor = "blue" }) => {
+      const [isOpen, setIsOpen] = useState(defaultOpen);
+      const colors = {
+        blue: "text-blue-600 bg-blue-50 dark:bg-blue-900/20",
+        orange: "text-orange-600 bg-orange-50 dark:bg-orange-900/20",
+        emerald: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
+        purple: "text-purple-600 bg-purple-50 dark:bg-purple-900/20",
+        rose: "text-rose-600 bg-rose-50 dark:bg-rose-900/20",
+        indigo: "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20",
+      };
+
+      return (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border dark:border-slate-800 overflow-hidden transition-all duration-300">
+          <button 
+            onClick={() => setIsOpen(!isOpen)}
+            className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl ${colors[accentColor] || colors.blue}`}>
+                <Icon className="w-6 h-6" />
+              </div>
+              <span className="font-bold text-xl text-slate-800 dark:text-slate-200">{title}</span>
+            </div>
+            {isOpen ? <ChevronUp className="w-6 h-6 text-slate-400" /> : <ChevronDown className="w-6 h-6 text-slate-400" />}
+          </button>
+          {isOpen && (
+            <div className="px-5 pb-5 animate-in slide-in-from-top-2 duration-200">
+              <div className="pt-4 border-t dark:border-slate-800 text-slate-600 dark:text-slate-300 text-base leading-relaxed w-full">
+                {children}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [isAdmin, setIsAdmin] = useState(false);
+      const [showAdminLogin, setShowAdminLogin] = useState(false);
+      const [user, setUser] = useState(null);
+      const [currentDate, setCurrentDate] = useState(getLatestSunday()); 
+      const [serviceType, setServiceType] = useState('SUNDAY_MORNING');
+      const [isDataLoaded, setIsDataLoaded] = useState(false);
+      const [saveStatus, setSaveStatus] = useState('saved'); 
+      
+      const [bulletinData, setBulletinData] = useState({
+        sermon: { title: "", verse: "", preacher: "" },
+        invocation: "",
+        order: [],
+        news: [],
+        missionGroups: [],
+        bibleTexts: {}, 
+        worshipServantsHeader: { thisWeek: "금주", nextWeek: "차주" },
+        worshipServants: [],
+        prayerSchedule: [], 
+        morningPrayer: "",
+        churchSchool: DEFAULT_CHURCH_SCHOOL,
+        donors: "",
+        accounts: "농협은행 121058-51-000997 (해운대순복음교회)",
+        recitingVerse: "",
+        serviceGuide: DEFAULT_SERVICE_GUIDE,
+        meetingGuide: DEFAULT_MEETING_GUIDE,
+        staff: DEFAULT_STAFF_LIST, 
+        serviceSchedule: "",
+        meetingSchedule: "",
+        info: { address: "부산시 해운대구 대천로 12", tel: "(051) 731-1900", fax: "(051) 731-1911", web: "www.dailychurch.co.kr" },
+        churchMotto: "2026년 교회 표어 : 오직 나의 영으로! (슥4:6~9)"
+      });
+
+      const [modal, setModal] = useState({ open: false, type: '', title: '', content: '', link: '' });
+
+      // Auth
+      useEffect(() => {
+        const initAuth = async () => {
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+          else await signInAnonymously(auth);
+        };
+        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, setUser);
+        return () => unsubscribe();
+      }, []);
+
+      // Data Loading
+      useEffect(() => {
+        if (!user) return;
+        setIsDataLoaded(false);
+        const docId = `${currentDate}_${serviceType}`;
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'bulletins', docId);
+
+        const unsubscribe = onSnapshot(docRef, async (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (JSON.stringify(data) !== JSON.stringify(bulletinData)) {
+               if (!data.missionGroups) data.missionGroups = [];
+               if (!data.worshipServants) data.worshipServants = [];
+               if (!data.worshipServantsHeader) data.worshipServantsHeader = { thisWeek: "금주", nextWeek: "차주" };
+               if (!data.news) data.news = [];
+               if (!data.prayerSchedule) data.prayerSchedule = [];
+               if (!data.serviceGuide) data.serviceGuide = DEFAULT_SERVICE_GUIDE;
+               if (!data.meetingGuide) data.meetingGuide = DEFAULT_MEETING_GUIDE;
+               if (!data.churchMotto) data.churchMotto = "2026년 교회 표어 : 오직 나의 영으로! (슥4:6~9)";
+               
+               if (typeof data.staff === 'string') {
+                 data.staff = data.staff.split('\n').filter(l => l.trim()).map(line => {
+                   const match = line.match(/\((.*?)\)\s*(.*)/);
+                   if (match) return { role: match[1], names: match[2], link: "" };
+                   return { role: "", names: line, link: "" };
+                 });
+               } else if (!data.staff) {
+                 data.staff = DEFAULT_STAFF_LIST;
+               }
+
+               if (typeof data.churchSchool === 'string' || !data.churchSchool) {
+                 data.churchSchool = DEFAULT_CHURCH_SCHOOL;
+               }
+
+               setBulletinData(data);
+            }
+            setIsDataLoaded(true);
+          } else {
+            let prevDate = getPrevWeekDate(currentDate);
+            let prevDocId = `${prevDate}_${serviceType}`;
+            let prevDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'bulletins', prevDocId);
+            
+            try {
+              let prevSnap = await getDoc(prevDocRef);
+              
+              if (!prevSnap.exists()) {
+                 const prevDate2 = getPrevWeekDate(prevDate);
+                 const prevDocId2 = `${prevDate2}_${serviceType}`;
+                 const prevDocRef2 = doc(db, 'artifacts', appId, 'public', 'data', 'bulletins', prevDocId2);
+                 prevSnap = await getDoc(prevDocRef2);
+              }
+
+              if (prevSnap.exists()) {
+                 const prevData = prevSnap.data();
+                 if (typeof prevData.staff === 'string') {
+                   prevData.staff = prevData.staff.split('\n').filter(l => l.trim()).map(line => {
+                     const match = line.match(/\((.*?)\)\s*(.*)/);
+                     if (match) return { role: match[1], names: match[2], link: "" };
+                     return { role: "", names: line, link: "" };
+                   });
+                 }
+                 if (typeof prevData.churchSchool === 'string') {
+                    prevData.churchSchool = DEFAULT_CHURCH_SCHOOL;
+                 }
+                 if (!prevData.churchMotto) prevData.churchMotto = "2026년 교회 표어 : 오직 나의 영으로! (슥4:6~9)";
+                 
+                 setBulletinData(prevData);
+              } else {
+                 setBulletinData(prev => ({
+                    ...prev,
+                    order: DEFAULT_ORDERS[serviceType] || [],
+                    sermon: { title: "", verse: "", preacher: "" },
+                    news: [],
+                    missionGroups: [],
+                    worshipServants: [],
+                    prayerSchedule: [],
+                    serviceGuide: DEFAULT_SERVICE_GUIDE,
+                    meetingGuide: DEFAULT_MEETING_GUIDE,
+                    staff: DEFAULT_STAFF_LIST,
+                    churchSchool: DEFAULT_CHURCH_SCHOOL,
+                    churchMotto: "2026년 교회 표어 : 오직 나의 영으로! (슥4:6~9)"
+                 }));
+              }
+            } catch (e) {
+               console.error("Error fetching prev data", e);
+               setBulletinData(prev => ({...prev, order: DEFAULT_ORDERS[serviceType] || []}));
+            }
+            setIsDataLoaded(true);
+          }
+        });
+        return () => unsubscribe();
+      }, [user, currentDate, serviceType]);
+
+      // Auto-Save Effect
+      useEffect(() => {
+        if (!user || !isDataLoaded) return;
+
+        setSaveStatus('saving');
+        const timer = setTimeout(async () => {
+          try {
+            const docId = `${currentDate}_${serviceType}`;
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'bulletins', docId), bulletinData);
+            setSaveStatus('saved');
+          } catch (e) {
+            console.error("Auto-save failed", e);
+            setSaveStatus('error');
+          }
+        }, 2000); 
+
+        return () => clearTimeout(timer);
+      }, [bulletinData, user, isDataLoaded, currentDate, serviceType]);
+
+      const openBible = (verseRef) => {
+        const cleanRef = String(verseRef).replace("▲ ", "").trim();
+        const content = bulletinData.bibleTexts?.[cleanRef] || "성경 본문 내용이 등록되지 않았습니다. 관리자 모드에서 입력해주세요.";
+        setModal({ open: true, type: 'BIBLE', title: cleanRef, content: content });
+      };
+
+      const openPerson = (name) => {
+        const clean = name.split(' ')[0];
+        setModal({ open: true, type: 'PERSON', title: name, content: PERSON_DB[clean] || "사역 정보가 등록되지 않았습니다." });
+      };
+
+      const handleAdminToggle = () => {
+        if (isAdmin) {
+          setIsAdmin(false);
+        } else {
+          setShowAdminLogin(true);
+        }
+      };
+
+      const changeServiceType = (id) => {
+        setServiceType(id);
+        const [y, m, d] = currentDate.split('-').map(Number);
+        const currentObj = new Date(y, m - 1, d);
+        const currentDay = currentObj.getDay(); 
+        const sunday = new Date(currentObj);
+        sunday.setDate(currentObj.getDate() - currentDay);
+        const offset = SERVICES[id].days[0];
+        const targetDate = new Date(sunday);
+        targetDate.setDate(sunday.getDate() + offset);
+        const yyyy = targetDate.getFullYear();
+        const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(targetDate.getDate()).padStart(2, '0');
+        setCurrentDate(`${yyyy}-${mm}-${dd}`);
+      };
+
+      const generatePrayerDates = () => {
+        const [y, m, d] = currentDate.split('-').map(Number);
+        const baseDate = new Date(y, m - 1, d);
+        const newSchedule = [];
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        
+        for (let i = 1; i <= 7; i++) {
+            const target = new Date(baseDate);
+            target.setDate(baseDate.getDate() + i);
+            const dayLabel = `${target.getDate()}(${days[target.getDay()]})`;
+            newSchedule.push({ label: dayLabel, fasting: "", intercession: "" });
+        }
+        setBulletinData(prev => ({ ...prev, prayerSchedule: newSchedule }));
+      };
+
+      const renderStaff = () => {
+        if (!Array.isArray(bulletinData.staff)) return <div className="whitespace-pre-wrap">{bulletinData.staff}</div>;
+
+        const groupedStaff = [];
+        bulletinData.staff.forEach((item) => {
+          const prev = groupedStaff[groupedStaff.length - 1];
+          if (prev && prev.role === item.role) {
+            prev.items.push(item);
+          } else {
+            groupedStaff.push({ role: item.role, items: [item] });
+          }
+        });
+
+        return (
+          <div className="flex flex-col gap-3 text-base">
+            {groupedStaff.map((group, idx) => (
+              <div key={idx} className="flex flex-col sm:flex-row sm:gap-2 items-start">
+                <span className="font-bold text-slate-800 dark:text-slate-200 min-w-[90px] shrink-0 text-lg">
+                  ({group.role})
+                </span>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {group.items.map((member, mIdx) => (
+                    <span key={mIdx} className="flex items-center text-lg">
+                      {member.link ? (
+                        <a href={member.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 font-bold">
+                          {member.names} <ExternalLink className="w-4 h-4"/>
+                        </a>
+                      ) : (
+                        <span className="text-slate-600 dark:text-slate-400">{member.names}</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      const renderWorshipOrder = () => (
+        <section className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-sm border dark:border-slate-800 overflow-hidden">
+          <div className="p-6 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+            <h3 className="font-black text-2xl">예배 순서</h3>
+            <span className="text-xs font-bold text-slate-400">Order of Worship</span>
+          </div>
+          <div className="divide-y dark:divide-slate-800">
+            {bulletinData.order.map((item, idx) => {
+              const isStanding = item.type.includes("▲");
+              const displayDetail = (item.type.includes("묵도") && bulletinData.invocation) 
+                ? bulletinData.invocation 
+                : item.detail;
+              const isVerse = displayDetail && (displayDetail.includes(":") || displayDetail.match(/[0-9]/));
+              
+              return (
+                <div key={idx} className="p-5 flex items-center justify-between gap-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                  <div className="flex items-center gap-4 flex-1 overflow-hidden">
+                    <span className="text-2xl font-black italic text-slate-300 dark:text-slate-700 shrink-0 w-8 text-center">{(idx + 1).toString().padStart(2, '0')}</span>
+                    <div className="flex items-center gap-2 truncate">
+                      <span className={`font-bold whitespace-nowrap text-xl ${isStanding ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                        {item.type}
+                        {isStanding && <MoveUp className="inline w-4 h-4 ml-1 mb-0.5" />}
+                      </span>
+                      {displayDetail && (
+                        <>
+                          <span className="text-slate-300 dark:text-slate-700 text-sm mx-2">|</span>
+                          <button 
+                            onClick={() => isVerse ? openBible(displayDetail) : null} 
+                            className={`text-lg truncate ${isVerse ? 'text-blue-500 hover:underline cursor-pointer font-medium' : 'text-slate-500 cursor-default'}`}
+                            disabled={!isVerse}
+                          >
+                            {displayDetail}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => openPerson(item.performer)} className="shrink-0 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded text-sm font-bold text-slate-500 hover:text-blue-600 transition-colors whitespace-nowrap">
+                    {item.performer}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-5 text-center">
+            <p className="text-sm font-bold text-slate-400">▲ 표시는 일어서서 예배를 드립니다.</p>
+          </div>
+        </section>
+      );
+
+      return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20">
+          <nav className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b dark:border-slate-800 px-4 py-4 flex justify-between items-center shadow-sm">
+            <div className="flex items-center gap-3">
+              <ChurchLogo />
+              <div>
+                <h1 className="font-bold text-xl leading-none text-slate-900 dark:text-white">해운대순복음교회</h1>
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-tight mt-1">Digital Smart Bulletin</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                 <span className="block font-bold text-base text-slate-700 dark:text-slate-300">담임목사 유 진 성</span>
+                 <span className="block text-xs text-slate-500 dark:text-slate-500 leading-none mt-0.5">Rev. Jason J. You</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-full">
+                    {saveStatus === 'saving' && <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />}
+                    {saveStatus === 'saved' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                    {saveStatus === 'error' && <RefreshCw className="w-3 h-3 text-red-500" />}
+                  </div>
+                )}
+                <button onClick={handleAdminToggle} className={`p-2 rounded-xl transition-all active:scale-90 ${isAdmin ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
+                  {isAdmin ? <Eye className="w-6 h-6" /> : <Settings className="w-6 h-6" />}
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          <main className="max-w-3xl mx-auto p-2 sm:p-4 space-y-4 sm:space-y-6">
+             <div className="bg-blue-600 text-white text-center py-4 px-4 rounded-2xl shadow-md font-bold text-lg break-keep">
+                {bulletinData.churchMotto}
+             </div>
+
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border dark:border-slate-800 space-y-5">
+              <div className="flex items-center gap-4">
+                <Calendar className="w-7 h-7 text-blue-500" />
+                <input type="date" value={currentDate} onChange={(e) => setCurrentDate(e.target.value)} className="bg-transparent font-black text-2xl focus:outline-none cursor-pointer" />
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                {Object.values(SERVICES).map(s => (
+                  <button key={s.id} onClick={() => changeServiceType(s.id)} className={`whitespace-nowrap py-3 px-6 rounded-2xl text-base font-bold transition-all ${serviceType === s.id ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>{s.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {!isAdmin ? (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                <div className="bg-gradient-to-br from-blue-700 to-indigo-900 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden transform transition-all hover:scale-[1.02]">
+                  <div className="relative z-10">
+                    <p className="text-blue-200 text-sm font-bold mb-3 uppercase tracking-widest">{SERVICES[serviceType].label}</p>
+                    <h2 className="text-4xl font-black mb-8 leading-tight break-keep">{bulletinData.sermon.title || "말씀을 준비 중입니다"}</h2>
+                    <div className="flex flex-wrap gap-3">
+                      <button onClick={() => openBible(bulletinData.sermon.verse)} className="bg-white/20 backdrop-blur-md px-5 py-3 rounded-2xl text-base font-bold flex items-center gap-2 active:scale-95 hover:bg-white/30"><BookOpen className="w-5 h-5"/> {bulletinData.sermon.verse}</button>
+                      <button onClick={() => openPerson(bulletinData.sermon.preacher)} className="bg-white/20 backdrop-blur-md px-5 py-3 rounded-2xl text-base font-bold flex items-center gap-2 active:scale-95 hover:bg-white/30"><User className="w-5 h-5"/> {bulletinData.sermon.preacher}</button>
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-10 -right-10 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+                </div>
+
+                {renderWorshipOrder()}
+
+                <div className="space-y-4 pt-4 pb-20">
+                  <h3 className="px-2 text-base font-black text-slate-400 uppercase tracking-widest mb-3">Church Information</h3>
+
+                  <AccordionItem title="예배위원" icon={User} accentColor="indigo">
+                    {Array.isArray(bulletinData.worshipServants) ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-base text-left border-collapse border dark:border-slate-700 rounded-xl overflow-hidden min-w-[340px]">
+                          <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <tr>
+                              <th className="p-3 border dark:border-slate-700 w-1/4">예배위원</th>
+                              <th className="p-3 border dark:border-slate-700 w-[37.5%]">{bulletinData.worshipServantsHeader?.thisWeek || "금주"}</th>
+                              <th className="p-3 border dark:border-slate-700 w-[37.5%]">{bulletinData.worshipServantsHeader?.nextWeek || "차주"}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900">
+                            {bulletinData.worshipServants.length > 0 ? bulletinData.worshipServants.map((item, idx) => (
+                               <tr key={idx}>
+                                 <td className="p-3 border dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800/50 align-top">{item.role}</td>
+                                 <td className="p-3 border dark:border-slate-700 whitespace-pre-wrap align-top leading-relaxed">{item.thisWeek}</td>
+                                 <td className="p-3 border dark:border-slate-700 whitespace-pre-wrap align-top leading-relaxed">{item.nextWeek}</td>
+                               </tr>
+                            )) : <tr><td colSpan="3" className="p-5 text-center text-slate-400">등록된 예배위원이 없습니다.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : <p className="whitespace-pre-wrap">{bulletinData.worshipServants}</p>}
+                  </AccordionItem>
+
+                  <AccordionItem title="선교회별 예배 보고현황" icon={ClipboardList} accentColor="blue">
+                    <div className="overflow-x-auto rounded-xl border dark:border-slate-700">
+                      <table className="w-full text-base text-center border-collapse bg-white dark:bg-slate-900 min-w-[600px]">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                          <tr>
+                            <th className="p-3 border dark:border-slate-700">선교회</th>
+                            <th className="p-3 border dark:border-slate-700">순</th>
+                            <th className="p-3 border dark:border-slate-700">순장</th>
+                            <th className="p-3 border dark:border-slate-700">장소</th>
+                            <th className="p-3 border dark:border-slate-700">인도</th>
+                            <th className="p-3 border dark:border-slate-700">인원</th>
+                            <th className="p-3 border dark:border-slate-700">성경</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bulletinData.missionGroups.map((group, gIdx) => {
+                            const calculatedSpans = new Array(group.rows.length).fill(0);
+                            let i = 0;
+                            while(i < group.rows.length) {
+                              let count = 1;
+                              while(i + count < group.rows.length && group.rows[i+count].guide === group.rows[i].guide) count++;
+                              calculatedSpans[i] = count;
+                              i += count;
+                            }
+                            return group.rows.map((row, rIdx) => (
+                              <tr key={`${gIdx}-${rIdx}`} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                {rIdx === 0 && <td rowSpan={group.rows.length} className="p-3 border dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800/50 align-middle text-xl">{group.name}</td>}
+                                <td className="p-3 border dark:border-slate-700">{row.num}</td>
+                                <td className="p-3 border dark:border-slate-700 font-bold">{row.leader}</td>
+                                {rIdx === 0 && <td rowSpan={group.rows.length} className="p-3 border dark:border-slate-700 align-middle">{group.place}</td>}
+                                {calculatedSpans[rIdx] > 0 ? <td rowSpan={calculatedSpans[rIdx]} className="p-3 border dark:border-slate-700 align-middle">{row.guide}</td> : null}
+                                <td className="p-3 border dark:border-slate-700">{row.count}</td>
+                                <td className="p-3 border dark:border-slate-700">{row.bible}</td>
+                              </tr>
+                            ));
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="아침 금식 및 중보기도" icon={Sunrise} accentColor="orange">
+                    <div className="overflow-x-auto rounded-xl border dark:border-slate-700">
+                      <table className="w-full text-base text-center border-collapse bg-white dark:bg-slate-900 min-w-[600px]">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                          <tr>
+                            <th className="p-3 border dark:border-slate-700 bg-white dark:bg-slate-800 diagonal-cell"></th>
+                            {(bulletinData.prayerSchedule && bulletinData.prayerSchedule.length > 0) ? 
+                              bulletinData.prayerSchedule.map((item, idx) => (<th key={idx} className="p-3 border dark:border-slate-700 min-w-[70px]">{item.label}</th>)) : 
+                              <><th className="p-3 border dark:border-slate-700">월</th><th className="p-3 border dark:border-slate-700">화</th><th className="p-3 border dark:border-slate-700">수</th><th className="p-3 border dark:border-slate-700">목</th><th className="p-3 border dark:border-slate-700">금</th><th className="p-3 border dark:border-slate-700">토</th><th className="p-3 border dark:border-slate-700">주</th></>
+                            }
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b dark:border-slate-700">
+                            <td className="p-3 border dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800/50">금식</td>
+                            {(bulletinData.prayerSchedule || []).map((item, idx) => (<td key={idx} className="p-3 border dark:border-slate-700">{item.fasting}</td>))}
+                          </tr>
+                          <tr>
+                            <td className="p-3 border dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800/50">중보</td>
+                            {(bulletinData.prayerSchedule || []).map((item, idx) => (<td key={idx} className="p-3 border dark:border-slate-700">{item.intercession}</td>))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="교회학교예배" icon={GraduationCap} accentColor="emerald">
+                    {Array.isArray(bulletinData.churchSchool) ? (
+                      <div className="overflow-x-auto rounded-xl border dark:border-slate-700">
+                        <table className="w-full text-base text-center border-collapse bg-white dark:bg-slate-900 min-w-[500px]">
+                          <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <tr>
+                              <th className="p-3 border dark:border-slate-700">교회학교</th>
+                              <th className="p-3 border dark:border-slate-700">설교자</th>
+                              <th className="p-3 border dark:border-slate-700">본문</th>
+                              <th className="p-3 border dark:border-slate-700">제목</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {bulletinData.churchSchool.map((item, idx) => (
+                              <tr key={idx}>
+                                <td className="p-3 border dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800/50">{item.name}</td>
+                                <td className="p-3 border dark:border-slate-700">{item.preacher}</td>
+                                <td className="p-3 border dark:border-slate-700">{item.bible}</td>
+                                <td className="p-3 border dark:border-slate-700">{item.title}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap">{bulletinData.churchSchool}</div>
+                    )}
+                  </AccordionItem>
+
+                  <AccordionItem title="헌금 드리는 분" icon={HeartHandshake} accentColor="rose">
+                    <div className="whitespace-pre-wrap text-base leading-7 text-slate-500 dark:text-slate-400 break-keep">{bulletinData.donors}</div>
+                  </AccordionItem>
+
+                  <AccordionItem title="교회헌금계좌" icon={CreditCard} accentColor="emerald">
+                    <div className="bg-slate-100 dark:bg-slate-800 p-6 rounded-xl font-bold text-center text-lg text-emerald-600 select-all">
+                      {bulletinData.accounts}
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="교회 및 교우 소식" icon={Megaphone} accentColor="orange" defaultOpen={true}>
+                     <div className="space-y-3">
+                      {bulletinData.news.length > 0 ? bulletinData.news.map((item, idx) => (
+                        <button key={idx} onClick={() => setModal({open: true, type:'NEWS', title: item.title, content: item.content, link: item.link})} 
+                          className="w-full text-left p-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex justify-between items-center group">
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-lg text-slate-700 dark:text-slate-300 group-hover:text-blue-600 transition-colors">{item.title}</span>
+                            {item.link && <LinkIcon className="w-4 h-4 text-blue-500" />}
+                          </div>
+                          <ChevronRight className="w-5 h-5 text-slate-300" />
+                        </button>
+                      )) : <div className="text-center text-slate-400 py-4 text-lg">소식이 없습니다.</div>}
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="이번 주 읊조리는 말씀" icon={Mic2} accentColor="purple">
+                    <div className="p-6 bg-purple-50 dark:bg-purple-900/10 rounded-xl text-center">
+                      <p className="font-serif italic font-bold text-purple-800 dark:text-purple-300 whitespace-pre-wrap text-xl leading-relaxed">
+                        {bulletinData.recitingVerse}
+                      </p>
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="예배안내" icon={Clock} accentColor="blue">
+                    <div className="overflow-x-auto rounded-xl border dark:border-slate-700">
+                      <table className="w-full text-base text-left border-collapse border dark:border-slate-700 bg-white dark:bg-slate-900 min-w-[350px]">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                          <tr>
+                            <th className="p-3 border dark:border-slate-700 w-1/3">구분</th>
+                            <th className="p-3 border dark:border-slate-700 w-1/3">시간</th>
+                            <th className="p-3 border dark:border-slate-700 w-1/3">장소</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                          {bulletinData.serviceGuide && bulletinData.serviceGuide.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="p-3 border dark:border-slate-700 font-bold">
+                                {item.link ? (
+                                  <a href={item.link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                    {item.name} <ExternalLink className="w-4 h-4"/>
+                                  </a>
+                                ) : item.name}
+                              </td>
+                              <td className="p-3 border dark:border-slate-700">{item.time}</td>
+                              <td className="p-3 border dark:border-slate-700">{item.place}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="모임안내" icon={Users} accentColor="indigo">
+                    <div className="overflow-x-auto rounded-xl border dark:border-slate-700">
+                      <table className="w-full text-base text-left border-collapse border dark:border-slate-700 bg-white dark:bg-slate-900 min-w-[350px]">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                          <tr>
+                            <th className="p-3 border dark:border-slate-700 w-1/3">구분</th>
+                            <th className="p-3 border dark:border-slate-700 w-1/3">시간</th>
+                            <th className="p-3 border dark:border-slate-700 w-1/3">장소</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                          {bulletinData.meetingGuide && bulletinData.meetingGuide.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="p-3 border dark:border-slate-700 font-bold">
+                                {item.link ? (
+                                  <a href={item.link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                    {item.name} <ExternalLink className="w-4 h-4"/>
+                                  </a>
+                                ) : item.name}
+                              </td>
+                              <td className="p-3 border dark:border-slate-700">{item.time}</td>
+                              <td className="p-3 border dark:border-slate-700">{item.place}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </AccordionItem>
+
+                  <AccordionItem title="섬기는 분들" icon={Smile} accentColor="blue">
+                    {renderStaff()}
+                  </AccordionItem>
+
+                  <div className="bg-slate-900 text-slate-400 p-8 rounded-[2.5rem] text-base space-y-4 mt-8">
+                    <div className="flex items-center gap-4"><MapPin className="w-6 h-6 text-slate-500" /><span>{bulletinData.info.address}</span></div>
+                    <div className="flex items-center gap-4"><Phone className="w-6 h-6 text-slate-500" /><span>{bulletinData.info.tel}</span></div>
+                    <div className="flex items-center gap-4"><FileText className="w-6 h-6 text-slate-500" /><span>FAX: {bulletinData.info.fax}</span></div>
+                    <div className="flex items-center gap-4">
+                      <Globe className="w-6 h-6 text-slate-500" />
+                      <a href={`http://${bulletinData.info.web.replace('http://', '').replace('https://', '')}`} target="_blank" rel="noreferrer" className="underline decoration-slate-700 underline-offset-4 hover:text-white transition-colors">{bulletinData.info.web}</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-8 pb-32 animate-in slide-in-from-top-4 duration-500">
+                <section className="bg-orange-50 dark:bg-orange-950/20 p-6 rounded-3xl border border-orange-100 dark:border-orange-900/50 space-y-4 shadow-sm">
+                  <h3 className="font-black text-orange-600 flex items-center gap-2 text-xl"><Settings className="w-6 h-6"/> 설교 설정</h3>
+                  <input placeholder="설교 제목" className="w-full p-4 rounded-2xl border-none shadow-sm dark:bg-slate-800 text-lg" value={bulletinData.sermon.title} onChange={e => setBulletinData({...bulletinData, sermon: {...bulletinData.sermon, title: e.target.value}})} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input placeholder="본문 구절" className="p-4 rounded-2xl border-none shadow-sm dark:bg-slate-800 text-lg" value={bulletinData.sermon.verse} onChange={e => setBulletinData({...bulletinData, sermon: {...bulletinData.sermon, verse: e.target.value}})} />
+                    <input placeholder="설교자" className="p-4 rounded-2xl border-none shadow-sm dark:bg-slate-800 text-lg" value={bulletinData.sermon.preacher} onChange={e => setBulletinData({...bulletinData, sermon: {...bulletinData.sermon, preacher: e.target.value}})} />
+                  </div>
+                  <div className="pt-2 border-t border-orange-100 dark:border-orange-900/50">
+                    <label className="text-sm font-bold text-orange-600/70 mb-2 block">묵도 성구</label>
+                    <input placeholder="묵도 성구 (예: 시 62:1)" className="w-full p-4 rounded-2xl border-none shadow-sm dark:bg-slate-800 mb-2 text-lg" value={bulletinData.invocation} onChange={e => setBulletinData({...bulletinData, invocation: e.target.value})} />
+                    {bulletinData.invocation && <textarea placeholder="묵도 성구 내용을 입력하세요" rows={3} className="w-full p-4 rounded-2xl border-none shadow-sm dark:bg-slate-800 text-base" value={bulletinData.bibleTexts[bulletinData.invocation] || ""} onChange={e => setBulletinData({...bulletinData, bibleTexts: {...bulletinData.bibleTexts, [bulletinData.invocation]: e.target.value}})} />}
+                  </div>
+                </section>
+
+                <section className="bg-sky-50 dark:bg-sky-900/20 p-6 rounded-3xl border border-sky-100 dark:border-sky-900/50 space-y-4 shadow-sm">
+                  <h3 className="font-black text-sky-600 flex items-center gap-2 text-xl"><BookOpen className="w-6 h-6"/> 성경 본문 내용 입력</h3>
+                  <p className="text-sm text-slate-500 font-bold">주보에 표시된 성경 구절의 본문 내용을 입력하면, 성도들이 클릭하여 읽을 수 있습니다.</p>
+                  
+                  <div className="space-y-4">
+                    {bulletinData.sermon.verse && (
+                      <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700">
+                        <label className="text-sm font-bold text-slate-400 mb-2 block">설교 본문 ({bulletinData.sermon.verse})</label>
+                        <textarea 
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-xl text-base h-32 focus:outline-blue-500 transition-all resize-none" 
+                          placeholder="내용을 입력하세요..." 
+                          value={bulletinData.bibleTexts[bulletinData.sermon.verse] || ""} 
+                          onChange={e => setBulletinData({...bulletinData, bibleTexts: {...bulletinData.bibleTexts, [bulletinData.sermon.verse]: e.target.value}})} 
+                        />
+                      </div>
+                    )}
+
+                    {bulletinData.order.map((item, idx) => {
+                       const isVerse = item.detail && (item.detail.includes(":") || item.detail.match(/[0-9]/));
+                       if (!isVerse) return null;
+                       
+                       return (
+                         <div key={idx} className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700">
+                           <label className="text-sm font-bold text-slate-400 mb-2 block">{item.type} ({item.detail})</label>
+                           <textarea 
+                             className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-xl text-base h-32 focus:outline-blue-500 transition-all resize-none" 
+                             placeholder="내용을 입력하세요..."
+                             value={bulletinData.bibleTexts[item.detail] || ""} 
+                             onChange={e => setBulletinData({...bulletinData, bibleTexts: {...bulletinData.bibleTexts, [item.detail]: e.target.value}})} 
+                           />
+                         </div>
+                       );
+                    })}
+                  </div>
+                </section>
+
+                 <section className="space-y-4">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-xl">예배 순서 편집</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, order: [...p.order, {id: Date.now(), type:"", detail:"", performer:""}]}))} className="p-2 bg-blue-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {bulletinData.order.map((item, idx) => (
+                    <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-2xl flex gap-2 items-center shadow-sm border dark:border-slate-800">
+                      <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base font-bold" placeholder="순서명" value={item.type} onChange={e => { const val = e.target.value; setBulletinData(prev => { const o = [...prev.order]; o[idx] = { ...o[idx], type: val }; return { ...prev, order: o }; }); }} />
+                      <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base" placeholder="구절/장" value={item.detail} onChange={e => { const val = e.target.value; setBulletinData(prev => { const o = [...prev.order]; o[idx] = { ...o[idx], detail: val }; return { ...prev, order: o }; }); }} />
+                      <input className="w-28 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base" placeholder="담당" value={item.performer} onChange={e => { const val = e.target.value; setBulletinData(prev => { const o = [...prev.order]; o[idx] = { ...o[idx], performer: val }; return { ...prev, order: o }; }); }} />
+                      <button onClick={() => setBulletinData(prev => { const o = [...prev.order]; o.splice(idx, 1); return { ...prev, order: o }; })} className="text-red-400 p-2 hover:bg-red-50 rounded-full transition-colors"><Trash2 className="w-5 h-5"/></button>
+                    </div>
+                  ))}
+                </section>
+
+                 <section className="bg-orange-50 dark:bg-orange-950/20 p-6 rounded-3xl border border-orange-100 dark:border-orange-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-orange-600 flex items-center gap-2 text-xl"><Bell className="w-6 h-6"/> 소식 관리</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, news: [...p.news, {title: "", content: "", link: ""}]}))} className="p-2 bg-orange-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {bulletinData.news.map((item, idx) => (
+                    <div key={idx} className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700 relative flex flex-col gap-2">
+                       <button onClick={() => setBulletinData(prev => { const newNews = [...prev.news]; newNews.splice(idx, 1); return { ...prev, news: newNews }; })} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5"/></button>
+                       <input className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-lg font-bold text-lg focus:outline-none" placeholder="제목" value={item.title} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const newNews = [...prev.news]; newNews[idx] = { ...newNews[idx], title: val }; return { ...prev, news: newNews }; }); }} />
+                       <textarea className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-lg text-base h-24" placeholder="내용" value={item.content} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const newNews = [...prev.news]; newNews[idx] = { ...newNews[idx], content: val }; return { ...prev, news: newNews }; }); }} />
+                       <input className="w-full bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-base text-blue-600 placeholder-blue-300" placeholder="관련 링크 (http://...)" value={item.link || ""} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const newNews = [...prev.news]; newNews[idx] = { ...newNews[idx], link: val }; return { ...prev, news: newNews }; }); }} />
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-3xl border border-indigo-100 dark:border-indigo-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-indigo-600 flex items-center gap-2 text-xl"><User className="w-6 h-6"/> 예배위원 관리</h3>
+                    <button onClick={() => {
+                      const current = Array.isArray(bulletinData.worshipServants) ? bulletinData.worshipServants : [];
+                      setBulletinData(p => ({...p, worshipServants: [...current, {role: "", thisWeek: "", nextWeek: ""}]}));
+                    }} className="p-2 bg-indigo-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  <div className="flex gap-2 mb-4 bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border dark:border-slate-800">
+                    <div className="flex-1"><label className="text-sm font-bold text-slate-400 mb-2 block">금주 헤더</label><input className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base font-bold" value={bulletinData.worshipServantsHeader?.thisWeek || ""} onChange={(e) => setBulletinData({...bulletinData, worshipServantsHeader: {...bulletinData.worshipServantsHeader, thisWeek: e.target.value}})}/></div>
+                    <div className="flex-1"><label className="text-sm font-bold text-slate-400 mb-2 block">차주 헤더</label><input className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base font-bold" value={bulletinData.worshipServantsHeader?.nextWeek || ""} onChange={(e) => setBulletinData({...bulletinData, worshipServantsHeader: {...bulletinData.worshipServantsHeader, nextWeek: e.target.value}})}/></div>
+                  </div>
+                  {Array.isArray(bulletinData.worshipServants) && bulletinData.worshipServants.map((item, idx) => (
+                    <div key={idx} className="flex gap-2 flex-col bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border dark:border-slate-800 relative">
+                       <button onClick={() => setBulletinData(prev => { const n = [...prev.worshipServants]; n.splice(idx, 1); return { ...prev, worshipServants: n }; })} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5"/></button>
+                       <div className="flex gap-2"><div className="flex-1"><label className="text-sm font-bold text-slate-400 mb-1">구분/역할</label><input className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base font-bold" value={item.role} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.worshipServants]; n[idx] = { ...n[idx], role: val }; return { ...prev, worshipServants: n }; }); }} /></div></div>
+                       <div className="flex gap-2"><div className="flex-1"><label className="text-sm font-bold text-slate-400 mb-1">금주 담당</label><textarea className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base" rows={2} value={item.thisWeek} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.worshipServants]; n[idx] = { ...n[idx], thisWeek: val }; return { ...prev, worshipServants: n }; }); }} /></div><div className="flex-1"><label className="text-sm font-bold text-slate-400 mb-1">차주 담당</label><textarea className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base" rows={2} value={item.nextWeek} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.worshipServants]; n[idx] = { ...n[idx], nextWeek: val }; return { ...prev, worshipServants: n }; }); }} /></div></div>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-3xl border border-purple-100 dark:border-purple-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-purple-600 flex items-center gap-2 text-xl"><ClipboardList className="w-6 h-6"/> 선교회 보고 관리</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, missionGroups: [...(p.missionGroups || []), { id: Date.now(), name: "", place: "", rows: [] }]}))} className="p-2 bg-purple-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {(bulletinData.missionGroups || []).map((group, gIdx) => (
+                    <div key={group.id || gIdx} className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border dark:border-slate-700 relative space-y-4">
+                       <button onClick={() => setBulletinData(prev => { const newGroups = [...prev.missionGroups]; newGroups.splice(gIdx, 1); return { ...prev, missionGroups: newGroups }; })} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-6 h-6"/></button>
+                       <div className="flex gap-3"><div className="w-24"><label className="text-sm font-bold text-slate-400 block mb-1">선교회명</label><input className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base font-bold text-center" placeholder="예: 7" value={group.name} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const newGroups = [...prev.missionGroups]; newGroups[gIdx] = { ...newGroups[gIdx], name: val }; return { ...prev, missionGroups: newGroups }; }); }} /></div><div className="flex-1"><label className="text-sm font-bold text-slate-400 block mb-1">장소</label><input className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base text-center" placeholder="예: 교회" value={group.place} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const newGroups = [...prev.missionGroups]; newGroups[gIdx] = { ...newGroups[gIdx], place: val }; return { ...prev, missionGroups: newGroups }; }); }} /></div></div>
+                       <div className="space-y-2"><div className="flex justify-between items-center pb-2 border-b dark:border-slate-700"><span className="text-sm font-bold text-slate-500">보고 내용</span><button onClick={() => setBulletinData(prev => { const newGroups = [...prev.missionGroups]; newGroups[gIdx].rows = [...newGroups[gIdx].rows, { num: "", leader: "", guide: "", count: "", bible: "" }]; return { ...prev, missionGroups: newGroups }; })} className="text-xs px-3 py-1.5 bg-purple-100 text-purple-600 rounded-lg font-bold hover:bg-purple-200">+ 행 추가</button></div>
+                         {group.rows.map((row, rIdx) => (
+                           <div key={rIdx} className="flex gap-1 items-center"><input className="w-12 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm text-center" placeholder="순" value={row.num} onChange={e => { const val = e.target.value; setBulletinData(prev => { const ng = [...prev.missionGroups]; ng[gIdx].rows[rIdx].num = val; return { ...prev, missionGroups: ng }; }); }} /><input className="flex-1 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm" placeholder="순장" value={row.leader} onChange={e => { const val = e.target.value; setBulletinData(prev => { const ng = [...prev.missionGroups]; ng[gIdx].rows[rIdx].leader = val; return { ...prev, missionGroups: ng }; }); }} /><input className="flex-1 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm" placeholder="인도" value={row.guide} onChange={e => { const val = e.target.value; setBulletinData(prev => { const ng = [...prev.missionGroups]; ng[gIdx].rows[rIdx].guide = val; return { ...prev, missionGroups: ng }; }); }} /><input className="w-12 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm text-center" placeholder="인원" value={row.count} onChange={e => { const val = e.target.value; setBulletinData(prev => { const ng = [...prev.missionGroups]; ng[gIdx].rows[rIdx].count = val; return { ...prev, missionGroups: ng }; }); }} /><input className="w-12 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-sm text-center" placeholder="성경" value={row.bible} onChange={e => { const val = e.target.value; setBulletinData(prev => { const ng = [...prev.missionGroups]; ng[gIdx].rows[rIdx].bible = val; return { ...prev, missionGroups: ng }; }); }} /><button onClick={() => setBulletinData(prev => { const ng = [...prev.missionGroups]; ng[gIdx].rows.splice(rIdx, 1); return { ...prev, missionGroups: ng }; })} className="text-red-300 hover:text-red-500"><X className="w-5 h-5"/></button></div>
+                         ))}
+                       </div>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-emerald-50 dark:bg-emerald-900/20 p-6 rounded-3xl border border-emerald-100 dark:border-emerald-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-emerald-600 flex items-center gap-2 text-xl"><Sunrise className="w-6 h-6"/> 금식 및 중보기도 관리</h3>
+                    <button onClick={generatePrayerDates} className="flex items-center gap-1 p-2 bg-emerald-600 text-white rounded-xl shadow-md text-sm font-bold hover:bg-emerald-700 transition-colors"><Wand2 className="w-4 h-4" /> 날짜 자동입력</button>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700"><label className="text-sm font-bold text-slate-400 mb-2 block">기도제목/주제</label><textarea className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="주제 및 기간" value={bulletinData.morningPrayer} onChange={e => setBulletinData({...bulletinData, morningPrayer: e.target.value})} /></div>
+                    <div className="grid grid-cols-1 gap-2">{(bulletinData.prayerSchedule || []).map((item, idx) => (<div key={idx} className="flex gap-2 items-center bg-white dark:bg-slate-800 p-3 rounded-xl border dark:border-slate-700"><div className="w-20"><label className="text-xs font-bold text-slate-400 block mb-1">날짜</label><input className="w-full p-2 bg-slate-50 dark:bg-slate-900 rounded text-sm font-bold text-center" value={item.label} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const ps = [...(prev.prayerSchedule || [])]; ps[idx] = { ...ps[idx], label: val }; return { ...prev, prayerSchedule: ps }; }); }}/></div><div className="flex-1"><label className="text-xs font-bold text-slate-400 block mb-1">금식</label><input className="w-full p-2 bg-slate-50 dark:bg-slate-900 rounded text-sm" placeholder="성명" value={item.fasting} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const ps = [...(prev.prayerSchedule || [])]; ps[idx] = { ...ps[idx], fasting: val }; return { ...prev, prayerSchedule: ps }; }); }}/></div><div className="flex-1"><label className="text-xs font-bold text-slate-400 block mb-1">중보</label><input className="w-full p-2 bg-slate-50 dark:bg-slate-900 rounded text-sm" placeholder="성명" value={item.intercession} onChange={(e) => { const val = e.target.value; setBulletinData(prev => { const ps = [...(prev.prayerSchedule || [])]; ps[idx] = { ...ps[idx], intercession: val }; return { ...prev, prayerSchedule: ps }; }); }}/></div></div>))}</div>
+                  </div>
+                </section>
+                
+                <section className="bg-emerald-50 dark:bg-emerald-900/20 p-6 rounded-3xl border border-emerald-100 dark:border-emerald-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-emerald-600 flex items-center gap-2 text-xl"><GraduationCap className="w-6 h-6"/> 교회학교 관리</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, churchSchool: [...(Array.isArray(p.churchSchool) ? p.churchSchool : []), {name:"", preacher:"", bible:"", title:""}]}))} className="p-2 bg-emerald-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {Array.isArray(bulletinData.churchSchool) && bulletinData.churchSchool.map((item, idx) => (
+                    <div key={idx} className="flex gap-2 bg-white dark:bg-slate-800 p-3 rounded-2xl border dark:border-slate-700 items-center">
+                      <div className="w-24"><input className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base font-bold text-center" placeholder="부서" value={item.name} onChange={e => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.churchSchool]; n[idx].name = val; return {...prev, churchSchool: n}; }); }} /></div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex gap-1">
+                          <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="설교자" value={item.preacher} onChange={e => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.churchSchool]; n[idx].preacher = val; return {...prev, churchSchool: n}; }); }} />
+                          <input className="w-28 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="본문" value={item.bible} onChange={e => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.churchSchool]; n[idx].bible = val; return {...prev, churchSchool: n}; }); }} />
+                        </div>
+                        <input className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base font-bold" placeholder="설교 제목" value={item.title} onChange={e => { const val = e.target.value; setBulletinData(prev => { const n = [...prev.churchSchool]; n[idx].title = val; return {...prev, churchSchool: n}; }); }} />
+                      </div>
+                      <button onClick={() => setBulletinData(prev => { const n = [...prev.churchSchool]; n.splice(idx, 1); return {...prev, churchSchool: n}; })} className="text-red-400 p-2"><Trash2 className="w-5 h-5"/></button>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-3xl border border-blue-100 dark:border-blue-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-blue-600 flex items-center gap-2 text-xl"><Clock className="w-6 h-6"/> 예배안내 관리</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, serviceGuide: [...(p.serviceGuide || []), {name:"", time:"", place:"", link: ""}]}))} className="p-2 bg-blue-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {(bulletinData.serviceGuide || []).map((item, idx) => (
+                    <div key={idx} className="flex flex-col gap-1 bg-white dark:bg-slate-800 p-3 rounded-2xl border dark:border-slate-700">
+                      <div className="flex gap-2">
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base font-bold" placeholder="구분" value={item.name} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const n = [...prev.serviceGuide]; n[idx].name = val; return {...prev, serviceGuide: n}; });
+                        }}/>
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="시간" value={item.time} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const n = [...prev.serviceGuide]; n[idx].time = val; return {...prev, serviceGuide: n}; });
+                        }}/>
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="장소" value={item.place} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const n = [...prev.serviceGuide]; n[idx].place = val; return {...prev, serviceGuide: n}; });
+                        }}/>
+                        <button onClick={() => setBulletinData(prev => { const n = [...prev.serviceGuide]; n.splice(idx, 1); return {...prev, serviceGuide: n}; })} className="text-red-400 p-2"><Trash2 className="w-5 h-5"/></button>
+                      </div>
+                      <input className="w-full bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-sm text-blue-600 placeholder-blue-300" placeholder="연결 링크 (https://...)" value={item.link || ""} onChange={e => {
+                        const val = e.target.value;
+                        setBulletinData(prev => { const n = [...prev.serviceGuide]; n[idx].link = val; return {...prev, serviceGuide: n}; });
+                      }}/>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-3xl border border-indigo-100 dark:border-indigo-900/50 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black text-indigo-600 flex items-center gap-2 text-xl"><Users className="w-6 h-6"/> 모임안내 관리</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, meetingGuide: [...(p.meetingGuide || []), {name:"", time:"", place:"", link: ""}]}))} className="p-2 bg-indigo-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {(bulletinData.meetingGuide || []).map((item, idx) => (
+                    <div key={idx} className="flex flex-col gap-1 bg-white dark:bg-slate-800 p-3 rounded-2xl border dark:border-slate-700">
+                      <div className="flex gap-2">
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base font-bold" placeholder="구분" value={item.name} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const n = [...prev.meetingGuide]; n[idx].name = val; return {...prev, meetingGuide: n}; });
+                        }}/>
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="시간" value={item.time} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const n = [...prev.meetingGuide]; n[idx].time = val; return {...prev, meetingGuide: n}; });
+                        }}/>
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-base" placeholder="장소" value={item.place} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const n = [...prev.meetingGuide]; n[idx].place = val; return {...prev, meetingGuide: n}; });
+                        }}/>
+                        <button onClick={() => setBulletinData(prev => { const n = [...prev.meetingGuide]; n.splice(idx, 1); return {...prev, meetingGuide: n}; })} className="text-red-400 p-2"><Trash2 className="w-5 h-5"/></button>
+                      </div>
+                      <input className="w-full bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg text-sm text-indigo-600 placeholder-indigo-300" placeholder="연결 링크 (https://...)" value={item.link || ""} onChange={e => {
+                        const val = e.target.value;
+                        setBulletinData(prev => { const n = [...prev.meetingGuide]; n[idx].link = val; return {...prev, meetingGuide: n}; });
+                      }}/>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-slate-100 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="font-black flex items-center gap-2 text-xl"><Smile className="w-6 h-6"/> 섬기는 분들 관리</h3>
+                    <button onClick={() => setBulletinData(p => ({...p, staff: [...(p.staff || []), {role:"", names:"", link: ""}]}))} className="p-2 bg-slate-600 text-white rounded-xl shadow-md"><Plus className="w-6 h-6"/></button>
+                  </div>
+                  {Array.isArray(bulletinData.staff) && bulletinData.staff.map((item, idx) => (
+                    <div key={idx} className="flex flex-col gap-1 bg-white dark:bg-slate-900 p-3 rounded-2xl border dark:border-slate-700">
+                      <div className="flex gap-2">
+                        <input className="w-1/4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base font-bold text-center" placeholder="직분" value={item.role} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const s = [...prev.staff]; s[idx].role = val; return {...prev, staff: s}; });
+                        }}/>
+                        <input className="flex-1 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-base" placeholder="성명" value={item.names} onChange={e => {
+                          const val = e.target.value;
+                          setBulletinData(prev => { const s = [...prev.staff]; s[idx].names = val; return {...prev, staff: s}; });
+                        }}/>
+                        <button onClick={() => setBulletinData(prev => { const s = [...prev.staff]; s.splice(idx, 1); return {...prev, staff: s}; })} className="text-red-400 p-2"><Trash2 className="w-5 h-5"/></button>
+                      </div>
+                      <input className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-lg text-sm text-blue-500 placeholder-slate-300" placeholder="연결 링크 (https://...)" value={item.link || ""} onChange={e => {
+                        const val = e.target.value;
+                        setBulletinData(prev => { const s = [...prev.staff]; s[idx].link = val; return {...prev, staff: s}; });
+                      }}/>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="bg-slate-100 dark:bg-slate-800/50 p-6 rounded-3xl space-y-6">
+                  <h3 className="font-black flex items-center gap-2 text-xl"><FileText className="w-6 h-6"/> 기타 주보 정보 입력</h3>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-500">헌금 드리는 분</label>
+                    <textarea className="w-full p-4 rounded-xl border-none shadow-sm h-32 dark:bg-slate-800 text-lg" value={bulletinData.donors} onChange={e => setBulletinData({...bulletinData, donors: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-500">읊조리는 말씀</label>
+                    <textarea className="w-full p-4 rounded-xl border-none shadow-sm h-28 dark:bg-slate-800 text-lg" value={bulletinData.recitingVerse} onChange={e => setBulletinData({...bulletinData, recitingVerse: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-500">교회 표어 (매년 변경)</label>
+                    <input className="w-full p-4 rounded-xl border-none shadow-sm dark:bg-slate-800 mb-2 text-lg" value={bulletinData.churchMotto} onChange={e => setBulletinData({...bulletinData, churchMotto: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-500">교회 정보 (주소/전화/팩스/웹)</label>
+                    <input className="w-full p-4 rounded-xl border-none shadow-sm dark:bg-slate-800 mb-2 text-lg" placeholder="주소" value={bulletinData.info.address} onChange={e => setBulletinData({...bulletinData, info: {...bulletinData.info, address: e.target.value}})} />
+                    <input className="w-full p-4 rounded-xl border-none shadow-sm dark:bg-slate-800 mb-2 text-lg" placeholder="전화번호" value={bulletinData.info.tel} onChange={e => setBulletinData({...bulletinData, info: {...bulletinData.info, tel: e.target.value}})} />
+                    <input className="w-full p-4 rounded-xl border-none shadow-sm dark:bg-slate-800 mb-2 text-lg" placeholder="팩스" value={bulletinData.info.fax} onChange={e => setBulletinData({...bulletinData, info: {...bulletinData.info, fax: e.target.value}})} />
+                    <input className="w-full p-4 rounded-xl border-none shadow-sm dark:bg-slate-800 text-lg" placeholder="홈페이지" value={bulletinData.info.web} onChange={e => setBulletinData({...bulletinData, info: {...bulletinData.info, web: e.target.value}})} />
+                  </div>
+                </section>
+              </div>
+            )}
+          </main>
+
+          <Modal modal={modal} onClose={() => setModal(p => ({ ...p, open: false }))} />
+          <AdminLoginModal isOpen={showAdminLogin} onClose={() => setShowAdminLogin(false)} onLogin={() => setIsAdmin(true)} />
+        </div>
+      );
+    };
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
